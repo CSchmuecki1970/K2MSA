@@ -1,4 +1,5 @@
 import 'analysis_mode.dart';
+import 'analysis_metadata.dart';
 
 /// Einstufung der Messsystemeignung nach AIAG
 enum MsaSuitability {
@@ -25,12 +26,31 @@ class MsaType1Result {
   final double studyVariation; // 6σ (Study Variation)
   final double percentStudyVariation; // %GRR (Repeatability % TV)
 
+  // Discrimination & Resolution (AIAG Critical)
+  final double? discriminationRatio; // DR = Tolerance / Study Variation
+  final int? numberOfDistinctCategories; // NDC = DR * 1.41
+  final double? resolutionPercent; // Resolution as % of tolerance
+
+  // Confidence & Control Intervals
+  final double confidenceIntervalLower; // 95% CI lower bound
+  final double confidenceIntervalUpper; // 95% CI upper bound
+  final double controlLimitLower; // LCL = mean - 3σ
+  final double controlLimitUpper; // UCL = mean + 3σ
+
+  // Process Capability (if tolerance available)
+  final double? cp; // Potential capability
+  final double? cpk; // Actual capability (considers centering)
+  final double? toleranceUsedPercent; // % of tolerance band used
+
   // AIAG-Bewertung
   final MsaSuitability suitability;
   final String interpretation;
 
   // Stabilitätsprüfung (optional)
   final Map<String, dynamic>? stabilityCheck;
+
+  // Analyse-Metadaten (Traceability & Professional Info)
+  final AnalysisMetadata? metadata;
 
   MsaType1Result({
     required this.mode,
@@ -43,9 +63,24 @@ class MsaType1Result {
     this.bias,
     required this.studyVariation,
     required this.percentStudyVariation,
+    // Discrimination & Resolution
+    this.discriminationRatio,
+    this.numberOfDistinctCategories,
+    this.resolutionPercent,
+    // Confidence & Control Intervals
+    required this.confidenceIntervalLower,
+    required this.confidenceIntervalUpper,
+    required this.controlLimitLower,
+    required this.controlLimitUpper,
+    // Process Capability
+    this.cp,
+    this.cpk,
+    this.toleranceUsedPercent,
+    // AIAG Assessment
     required this.suitability,
     required this.interpretation,
     this.stabilityCheck,
+    this.metadata,
   });
 
   /// Formatierte Ausgabe für Konsole/UI
@@ -78,6 +113,51 @@ class MsaType1Result {
     }
     buffer.writeln(
         '   %Study Variation (%TV):    ${percentStudyVariation.toStringAsFixed(2)}%\n');
+
+    // Discrimination & Resolution
+    if (discriminationRatio != null) {
+      buffer.writeln('🔍 DISCRIMINATION & AUFLÖSUNG:');
+      buffer.writeln(
+          '   Discrimination Ratio (DR): ${discriminationRatio!.toStringAsFixed(2)}');
+      if (numberOfDistinctCategories != null) {
+        buffer.writeln(
+            '   Distinct Categories (NDC):  $numberOfDistinctCategories');
+      }
+      if (resolutionPercent != null) {
+        buffer.writeln(
+            '   Auflösung (% Toleranz):     ${resolutionPercent!.toStringAsFixed(2)}%');
+      }
+      buffer.writeln('');
+    }
+
+    // Confidence & Control Intervals
+    buffer.writeln('📏 KONFIDENZ & KONTROLLGRENZEN:');
+    buffer.writeln(
+        '   95% CI Untergrenze:        ${confidenceIntervalLower.toStringAsFixed(6)}');
+    buffer.writeln(
+        '   95% CI Obergrenze:         ${confidenceIntervalUpper.toStringAsFixed(6)}');
+    buffer.writeln(
+        '   Kontrollgrenze (LCL):      ${controlLimitLower.toStringAsFixed(6)}');
+    buffer.writeln(
+        '   Kontrollgrenze (UCL):      ${controlLimitUpper.toStringAsFixed(6)}\n');
+
+    // Process Capability
+    if (cp != null || cpk != null) {
+      buffer.writeln('📈 PROZESSFÄHIGKEIT:');
+      if (cp != null) {
+        buffer
+            .writeln('   Cp (Potenzial):            ${cp!.toStringAsFixed(3)}');
+      }
+      if (cpk != null) {
+        buffer.writeln(
+            '   Cpk (Tatsächlich):         ${cpk!.toStringAsFixed(3)}');
+      }
+      if (toleranceUsedPercent != null) {
+        buffer.writeln(
+            '   Toleranznutzung:           ${toleranceUsedPercent!.toStringAsFixed(2)}%');
+      }
+      buffer.writeln('');
+    }
 
     buffer.writeln('✓ AIAG-BEWERTUNG:');
     final suitStr = switch (suitability) {
@@ -113,6 +193,20 @@ class MsaType1Result {
         'bias': bias,
         'studyVariation': studyVariation,
         'percentStudyVariation': percentStudyVariation,
+        // Discrimination & Resolution
+        'discriminationRatio': discriminationRatio,
+        'numberOfDistinctCategories': numberOfDistinctCategories,
+        'resolutionPercent': resolutionPercent,
+        // Confidence & Control Intervals
+        'confidenceIntervalLower': confidenceIntervalLower,
+        'confidenceIntervalUpper': confidenceIntervalUpper,
+        'controlLimitLower': controlLimitLower,
+        'controlLimitUpper': controlLimitUpper,
+        // Process Capability
+        'cp': cp,
+        'cpk': cpk,
+        'toleranceUsedPercent': toleranceUsedPercent,
+        // Assessment
         'suitability': suitability.toString(),
         'interpretation': interpretation,
         'stabilityCheck': stabilityCheck,

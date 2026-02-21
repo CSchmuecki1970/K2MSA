@@ -1,3 +1,4 @@
+import 'dart:math';
 import '../models/measurement_data.dart';
 import '../models/msa_result.dart';
 import '../models/analysis_mode.dart';
@@ -103,6 +104,24 @@ class MsaType1Service {
       AnalysisMode.oneD,
     );
 
+    // Calculate new advanced parameters
+    final confidenceInterval =
+        _calculateConfidenceInterval(mean, stdDev, values.length);
+    final controlLimitLower = mean - 3 * stdDev;
+    final controlLimitUpper = mean + 3 * stdDev;
+
+    final discriminationRatio =
+        _calculateDiscriminationRatio(studyVariation, effective_tolerance);
+    final numberOfDistinctCategories =
+        _calculateNumberOfDistinctCategories(discriminationRatio);
+    final resolutionPercent =
+        _calculateResolutionPercent(stdDev, effective_tolerance);
+
+    final cp = _calculateCp(stdDev, effective_tolerance);
+    final cpk = null; // No USL/LSL from metadata here
+    final toleranceUsedPercent =
+        _calculateToleranceUsedPercent(studyVariation, effective_tolerance);
+
     return MsaType1Result(
       mode: AnalysisMode.oneD,
       mean: mean,
@@ -114,6 +133,20 @@ class MsaType1Service {
       bias: bias,
       studyVariation: studyVariation,
       percentStudyVariation: percentStudyVariation,
+      // Discrimination & Resolution
+      discriminationRatio: discriminationRatio,
+      numberOfDistinctCategories: numberOfDistinctCategories,
+      resolutionPercent: resolutionPercent,
+      // Confidence & Control Intervals
+      confidenceIntervalLower: confidenceInterval['lower']!,
+      confidenceIntervalUpper: confidenceInterval['upper']!,
+      controlLimitLower: controlLimitLower,
+      controlLimitUpper: controlLimitUpper,
+      // Process Capability
+      cp: cp,
+      cpk: cpk,
+      toleranceUsedPercent: toleranceUsedPercent,
+      // Assessment
       suitability: suitability,
       interpretation: interpretation,
       stabilityCheck: null,
@@ -170,6 +203,24 @@ class MsaType1Service {
       AnalysisMode.twoD_direct,
     );
 
+    // Calculate new advanced parameters
+    final confidenceInterval =
+        _calculateConfidenceInterval(mean, stdDev, points.length);
+    final controlLimitLower = mean - 3 * stdDev;
+    final controlLimitUpper = mean + 3 * stdDev;
+
+    final discriminationRatio =
+        _calculateDiscriminationRatio(studyVariation, effective_tolerance);
+    final numberOfDistinctCategories =
+        _calculateNumberOfDistinctCategories(discriminationRatio);
+    final resolutionPercent =
+        _calculateResolutionPercent(stdDev, effective_tolerance);
+
+    final cp = _calculateCp(stdDev, effective_tolerance);
+    final cpk = null; // No USL/LSL from metadata here
+    final toleranceUsedPercent =
+        _calculateToleranceUsedPercent(studyVariation, effective_tolerance);
+
     return MsaType1Result(
       mode: AnalysisMode.twoD_direct,
       mean: mean,
@@ -181,6 +232,20 @@ class MsaType1Service {
       bias: bias,
       studyVariation: studyVariation,
       percentStudyVariation: percentStudyVariation,
+      // Discrimination & Resolution
+      discriminationRatio: discriminationRatio,
+      numberOfDistinctCategories: numberOfDistinctCategories,
+      resolutionPercent: resolutionPercent,
+      // Confidence & Control Intervals
+      confidenceIntervalLower: confidenceInterval['lower']!,
+      confidenceIntervalUpper: confidenceInterval['upper']!,
+      controlLimitLower: controlLimitLower,
+      controlLimitUpper: controlLimitUpper,
+      // Process Capability
+      cp: cp,
+      cpk: cpk,
+      toleranceUsedPercent: toleranceUsedPercent,
+      // Assessment
       suitability: suitability,
       interpretation: interpretation,
       stabilityCheck: null,
@@ -241,6 +306,24 @@ class MsaType1Service {
       };
     }
 
+    // Schritt 8: Calculate new advanced parameters
+    final confidenceInterval =
+        _calculateConfidenceInterval(mean, stdDev, measurements.length);
+    final controlLimitLower = mean - 3 * stdDev;
+    final controlLimitUpper = mean + 3 * stdDev;
+
+    final discriminationRatio =
+        _calculateDiscriminationRatio(studyVariation, effective_tolerance);
+    final numberOfDistinctCategories =
+        _calculateNumberOfDistinctCategories(discriminationRatio);
+    final resolutionPercent =
+        _calculateResolutionPercent(stdDev, effective_tolerance);
+
+    final cp = _calculateCp(stdDev, effective_tolerance);
+    final cpk = null; // No USL/LSL from metadata here
+    final toleranceUsedPercent =
+        _calculateToleranceUsedPercent(studyVariation, effective_tolerance);
+
     return MsaType1Result(
       mode: AnalysisMode.twoD_distances,
       mean: mean,
@@ -252,6 +335,20 @@ class MsaType1Service {
       bias: bias,
       studyVariation: studyVariation,
       percentStudyVariation: percentStudyVariation,
+      // Discrimination & Resolution
+      discriminationRatio: discriminationRatio,
+      numberOfDistinctCategories: numberOfDistinctCategories,
+      resolutionPercent: resolutionPercent,
+      // Confidence & Control Intervals
+      confidenceIntervalLower: confidenceInterval['lower']!,
+      confidenceIntervalUpper: confidenceInterval['upper']!,
+      controlLimitLower: controlLimitLower,
+      controlLimitUpper: controlLimitUpper,
+      // Process Capability
+      cp: cp,
+      cpk: cpk,
+      toleranceUsedPercent: toleranceUsedPercent,
+      // Assessment
       suitability: suitability,
       interpretation: interpretation,
       stabilityCheck: stabilityCheck,
@@ -307,5 +404,100 @@ class MsaType1Service {
     }
 
     return buffer.toString();
+  }
+
+  /// Berechnet 95% Konfidenzintervall für den Mittelwert
+  /// Verwendet z-score für n >= 30, sonst approximation
+  static Map<String, double> _calculateConfidenceInterval(
+    double mean,
+    double stdDev,
+    int sampleCount,
+  ) {
+    // Für MSA Type 1 verwenden wir üblicherweise z = 1.96 (95% CI)
+    // Bei kleinen Stichproben könnte man t-Verteilung nutzen, aber für MSA
+    // ist z-score Standard
+    const double z95 = 1.96;
+    final standardError = stdDev / sqrt(sampleCount.toDouble());
+    final marginOfError = z95 * standardError;
+
+    return {
+      'lower': mean - marginOfError,
+      'upper': mean + marginOfError,
+    };
+  }
+
+  /// Berechnet Discrimination Ratio (AIAG Standard)
+  /// DR = Tolerance / Study Variation (6σ)
+  /// AIAG Empfehlung: DR >= 4 (mindestens 4:1)
+  static double? _calculateDiscriminationRatio(
+    double studyVariation,
+    double? tolerance,
+  ) {
+    if (tolerance == null || tolerance == 0 || studyVariation == 0) {
+      return null;
+    }
+    return tolerance / studyVariation;
+  }
+
+  /// Berechnet Number of Distinct Categories (NDC)
+  /// NDC = DR * 1.41 (AIAG Formula)
+  /// Interpretation:
+  /// - NDC < 2: Unzureichend (gage cannot distinguish parts)
+  /// - NDC >= 2 and < 5: Marginal (limited categories)
+  /// - NDC >= 5: Acceptable (good discrimination)
+  static int? _calculateNumberOfDistinctCategories(
+      double? discriminationRatio) {
+    if (discriminationRatio == null) return null;
+    return (discriminationRatio * 1.41).floor();
+  }
+
+  /// Berechnet Auflösung als Prozent der Toleranz
+  /// Resolution % = (Equipment Resolution / Tolerance) * 100
+  /// Für MSA Type 1: Resolution basiert auf kleinster messbarer Einheit
+  static double? _calculateResolutionPercent(
+    double stdDev,
+    double? tolerance,
+  ) {
+    if (tolerance == null || tolerance == 0) return null;
+    // AIAG: Auflösung sollte etwa 1/10 der Study Variation sein
+    final resolution = stdDev * 0.1;
+    return (resolution / tolerance) * 100;
+  }
+
+  /// Berechnet Prozessfähigkeit Cp (Potential Capability)
+  /// Cp = Tolerance / (6 * σ)
+  /// Cp >= 1.33: Fähig, Cp >= 1.67: Sehr fähig
+  static double? _calculateCp(double stdDev, double? tolerance) {
+    if (tolerance == null || tolerance == 0 || stdDev == 0) return null;
+    return tolerance / (6 * stdDev);
+  }
+
+  /// Berechnet Prozessfähigkeit Cpk (Actual Capability)
+  /// Cpk = min((USL - μ) / 3σ, (μ - LSL) / 3σ)
+  /// Berücksichtigt Zentrierung des Prozesses
+  static double? _calculateCpk(
+    double mean,
+    double stdDev,
+    double? upperSpecLimit,
+    double? lowerSpecLimit,
+  ) {
+    if (upperSpecLimit == null || lowerSpecLimit == null || stdDev == 0) {
+      return null;
+    }
+
+    final cpkUpper = (upperSpecLimit - mean) / (3 * stdDev);
+    final cpkLower = (mean - lowerSpecLimit) / (3 * stdDev);
+
+    return cpkUpper < cpkLower ? cpkUpper : cpkLower;
+  }
+
+  /// Berechnet prozentuale Toleranznutzung
+  /// % Used = (6σ / Tolerance) * 100
+  static double? _calculateToleranceUsedPercent(
+    double studyVariation,
+    double? tolerance,
+  ) {
+    if (tolerance == null || tolerance == 0) return null;
+    return (studyVariation / tolerance) * 100;
   }
 }

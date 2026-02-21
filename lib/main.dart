@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'models/measurement_data.dart';
 import 'models/analysis_mode.dart';
+import 'models/analysis_metadata.dart';
+import 'models/msa_result.dart';
+import 'models/analysis_save_package.dart';
 import 'services/csv_service.dart';
 import 'services/calculation_service.dart';
 import 'services/msa_type1_service.dart';
 import 'services/pdf_export_service.dart';
+import 'services/localization_service.dart';
 
 void main() {
   runApp(const MsaAnalysisApp());
@@ -20,10 +25,112 @@ class MsaAnalysisApp extends StatefulWidget {
 }
 
 class _MsaAnalysisAppState extends State<MsaAnalysisApp> {
-  bool _isDarkMode = false;
+  String _currentTheme = 'light'; // 'light', 'dark', 'dracula'
+  String _currentLocale = 'de'; // 'de', 'en'
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('theme_preference') ?? 'light';
+    final savedLocale = prefs.getString('language_preference') ?? 'de';
+
+    // Initialize localization service
+    await LocalizationService().setLocale(savedLocale);
+
+    setState(() {
+      _currentTheme = savedTheme;
+      _currentLocale = savedLocale;
+    });
+  }
+
+  Future<void> _saveThemePreference(String theme) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme_preference', theme);
+  }
+
+  Future<void> _saveLocalePreference(String locale) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language_preference', locale);
+    await LocalizationService().setLocale(locale);
+    setState(() {
+      _currentLocale = locale;
+    });
+  }
+
+  // Dracula theme colors
+  static const Color _draculaBg = Color(0xFF282a36);
+  static const Color _draculaCurrent = Color(0xFF44475a);
+  static const Color _draculaForeground = Color(0xFFF8F8F2);
+  static const Color _draculaPurple = Color(0xFFBD93F9);
+  static const Color _draculaCyan = Color(0xFF8BE9FD);
+  static const Color _draculaGreen = Color(0xFF50FA7B);
+
+  ThemeData _buildDraculaTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: _draculaBg,
+      primaryColor: _draculaPurple,
+      colorScheme: ColorScheme.dark(
+        primary: _draculaPurple,
+        secondary: _draculaCyan,
+        tertiary: _draculaGreen,
+        surface: _draculaCurrent,
+        surfaceContainerHighest: _draculaCurrent,
+        onSurface: _draculaForeground,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: _draculaCurrent,
+        foregroundColor: _draculaForeground,
+        elevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: _draculaCurrent,
+        elevation: 4,
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        border: OutlineInputBorder(),
+        labelStyle: TextStyle(color: _draculaCyan),
+      ),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: Colors.white30),
+        bodyMedium: TextStyle(color: Colors.white30),
+        bodySmall: TextStyle(color: Colors.white30),
+        titleLarge: TextStyle(color: Colors.white30),
+        titleMedium: TextStyle(color: Colors.white30),
+        titleSmall: TextStyle(color: Colors.white30),
+        labelLarge: TextStyle(color: Colors.white30),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    late ThemeData darkTheme;
+    if (_currentTheme == 'dracula') {
+      darkTheme = _buildDraculaTheme();
+    } else {
+      darkTheme = ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.black87),
+          bodyMedium: TextStyle(color: Colors.black87),
+          bodySmall: TextStyle(color: Colors.black87),
+          titleLarge: TextStyle(color: Colors.black87),
+          titleMedium: TextStyle(color: Colors.black87),
+          titleSmall: TextStyle(color: Colors.black87),
+          labelLarge: TextStyle(color: Colors.black87),
+        ),
+      );
+    }
+
     return MaterialApp(
       title: 'MSA Type 1 Analysis',
       theme: ThemeData(
@@ -31,18 +138,23 @@ class _MsaAnalysisAppState extends State<MsaAnalysisApp> {
         useMaterial3: true,
         brightness: Brightness.light,
       ),
-      darkTheme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
-      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      darkTheme: darkTheme,
+      themeMode: _currentTheme == 'light' ? ThemeMode.light : ThemeMode.dark,
+      locale: Locale(_currentLocale),
       home: MsaAnalysisScreen(
-        isDarkMode: _isDarkMode,
-        onThemeChanged: (bool newValue) {
+        currentTheme: _currentTheme,
+        currentLocale: _currentLocale,
+        onThemeChanged: (String newTheme) {
           setState(() {
-            _isDarkMode = newValue;
+            _currentTheme = newTheme;
           });
+          _saveThemePreference(newTheme);
+        },
+        onLocaleChanged: (String newLocale) {
+          setState(() {
+            _currentLocale = newLocale;
+          });
+          _saveLocalePreference(newLocale);
         },
       ),
     );
@@ -50,13 +162,17 @@ class _MsaAnalysisAppState extends State<MsaAnalysisApp> {
 }
 
 class MsaAnalysisScreen extends StatefulWidget {
-  final bool isDarkMode;
-  final Function(bool) onThemeChanged;
+  final String currentTheme;
+  final String currentLocale;
+  final Function(String) onThemeChanged;
+  final Function(String) onLocaleChanged;
 
   const MsaAnalysisScreen({
     Key? key,
-    required this.isDarkMode,
+    required this.currentTheme,
+    required this.currentLocale,
     required this.onThemeChanged,
+    required this.onLocaleChanged,
   }) : super(key: key);
 
   @override
@@ -67,16 +183,172 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
   String? _analysisResult;
   List<MeasurementData>? _measurements;
   bool _isLoading = false;
+  bool _isDemoMode = false; // Demo mode toggle
   dynamic _msaResult; // Speichert das MsaType1Result für PDF-Export
   AnalysisMode _currentMode = AnalysisMode.twoD_distances; // Standard-Modus
+
+  // Metadata für Traceability
+  late AnalysisMetadata _metadata;
+
+  // Form controllers für Metadata
+  late TextEditingController _partNumberController;
+  late TextEditingController _partNameController;
+  late TextEditingController _drawingReferenceController;
+  late TextEditingController _instrumentNameController;
+  late TextEditingController _instrumentIdController;
+  late TextEditingController _calibrationStatusController;
+  late TextEditingController _calibrationDateController;
+  late TextEditingController _analyzedByController;
+  late TextEditingController _reviewedByController;
+  late TextEditingController _customerController;
+  late TextEditingController _companyController;
+  late TextEditingController _departmentController;
+  late TextEditingController _machineController;
+  late TextEditingController _processOrOperationController;
+  late TextEditingController _measurementProcedureController;
+  late TextEditingController _samplingPlanController;
+  late TextEditingController _temperatureController;
+  late TextEditingController _humidityController;
+  late TextEditingController _numberOfOperatorsController;
+  late TextEditingController _numberOfReplicatesController;
+  late TextEditingController _numberOfPartsController;
+  late TextEditingController _uslController;
+  late TextEditingController _lslController;
 
   @override
   void initState() {
     super.initState();
-    // Demo beim Start ausführen - nach dem ersten Build
+    _initializeMetadataControllers();
+    // Demo beim Start ausführen - nach dem ersten Build (wenn Demo Mode aktiv)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _runDemoAnalysis();
+      if (_isDemoMode) {
+        _runDemoAnalysis();
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _partNumberController.dispose();
+    _partNameController.dispose();
+    _drawingReferenceController.dispose();
+    _instrumentNameController.dispose();
+    _instrumentIdController.dispose();
+    _calibrationStatusController.dispose();
+    _calibrationDateController.dispose();
+    _analyzedByController.dispose();
+    _reviewedByController.dispose();
+    _customerController.dispose();
+    _companyController.dispose();
+    _departmentController.dispose();
+    _machineController.dispose();
+    _processOrOperationController.dispose();
+    _measurementProcedureController.dispose();
+    _samplingPlanController.dispose();
+    _temperatureController.dispose();
+    _humidityController.dispose();
+    _numberOfOperatorsController.dispose();
+    _numberOfReplicatesController.dispose();
+    _numberOfPartsController.dispose();
+    _uslController.dispose();
+    _lslController.dispose();
+    super.dispose();
+  }
+
+  void _initializeMetadataControllers() {
+    _partNumberController = TextEditingController();
+    _partNameController = TextEditingController();
+    _drawingReferenceController = TextEditingController();
+    _instrumentNameController = TextEditingController();
+    _instrumentIdController = TextEditingController();
+    _calibrationStatusController = TextEditingController();
+    _calibrationDateController = TextEditingController();
+    _analyzedByController = TextEditingController();
+    _reviewedByController = TextEditingController();
+    _customerController = TextEditingController();
+    _companyController = TextEditingController();
+    _departmentController = TextEditingController();
+    _machineController = TextEditingController();
+    _processOrOperationController = TextEditingController();
+    _measurementProcedureController = TextEditingController();
+    _samplingPlanController = TextEditingController();
+    _temperatureController = TextEditingController();
+    _humidityController = TextEditingController();
+    _numberOfOperatorsController = TextEditingController();
+    _numberOfReplicatesController = TextEditingController();
+    _numberOfPartsController = TextEditingController();
+    _uslController = TextEditingController();
+    _lslController = TextEditingController();
+
+    _metadata = AnalysisMetadata();
+  }
+
+  void _updateMetadataFromControllers() {
+    _metadata = AnalysisMetadata(
+      partNumber: _partNumberController.text.isEmpty
+          ? null
+          : _partNumberController.text,
+      partName:
+          _partNameController.text.isEmpty ? null : _partNameController.text,
+      drawingReference: _drawingReferenceController.text.isEmpty
+          ? null
+          : _drawingReferenceController.text,
+      instrumentName: _instrumentNameController.text.isEmpty
+          ? null
+          : _instrumentNameController.text,
+      instrumentId: _instrumentIdController.text.isEmpty
+          ? null
+          : _instrumentIdController.text,
+      calibrationStatus: _calibrationStatusController.text.isEmpty
+          ? null
+          : _calibrationStatusController.text,
+      calibrationDate: _calibrationDateController.text.isEmpty
+          ? null
+          : DateTime.tryParse(_calibrationDateController.text),
+      analyzedBy: _analyzedByController.text.isEmpty
+          ? null
+          : _analyzedByController.text,
+      reviewedBy: _reviewedByController.text.isEmpty
+          ? null
+          : _reviewedByController.text,
+      customer:
+          _customerController.text.isEmpty ? null : _customerController.text,
+      company: _companyController.text.isEmpty ? null : _companyController.text,
+      department: _departmentController.text.isEmpty
+          ? null
+          : _departmentController.text,
+      machine: _machineController.text.isEmpty ? null : _machineController.text,
+      processOrOperation: _processOrOperationController.text.isEmpty
+          ? null
+          : _processOrOperationController.text,
+      measurementProcedure: _measurementProcedureController.text.isEmpty
+          ? null
+          : _measurementProcedureController.text,
+      samplingPlan: _samplingPlanController.text.isEmpty
+          ? null
+          : _samplingPlanController.text,
+      temperature: _temperatureController.text.isEmpty
+          ? null
+          : double.tryParse(_temperatureController.text),
+      humidity: _humidityController.text.isEmpty
+          ? null
+          : double.tryParse(_humidityController.text),
+      numberOfOperators: _numberOfOperatorsController.text.isEmpty
+          ? null
+          : int.tryParse(_numberOfOperatorsController.text),
+      numberOfReplicates: _numberOfReplicatesController.text.isEmpty
+          ? null
+          : int.tryParse(_numberOfReplicatesController.text),
+      numberOfParts: _numberOfPartsController.text.isEmpty
+          ? null
+          : int.tryParse(_numberOfPartsController.text),
+      upperSpecLimit: _uslController.text.isEmpty
+          ? null
+          : double.tryParse(_uslController.text),
+      lowerSpecLimit: _lslController.text.isEmpty
+          ? null
+          : double.tryParse(_lslController.text),
+    );
   }
 
   /// Demo-CSV-Daten für 1D-Modus (nur X-Werte)
@@ -149,6 +421,9 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
   /// Analysiert CSV-Daten mit dem angegebenen Modus
   Future<void> _analyzeData(String csvContent, AnalysisMode mode) async {
     try {
+      // 0. Metadaten aktualisieren
+      _updateMetadataFromControllers();
+
       // 1. CSV parsen
       print('📝 Parsing CSV for mode: $mode');
       final parseResult = CsvService.parseCoordinates(csvContent);
@@ -173,11 +448,39 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       );
       print('✓ MSA analysis completed');
 
-      // 3. UI aktualisieren
+      // 3. Metadaten an Ergebnis anhängen
+      final msaResultWithMetadata = MsaType1Result(
+        mode: msaResult.mode,
+        mean: msaResult.mean,
+        standardDeviation: msaResult.standardDeviation,
+        min: msaResult.min,
+        max: msaResult.max,
+        sampleCount: msaResult.sampleCount,
+        repeatability: msaResult.repeatability,
+        bias: msaResult.bias,
+        studyVariation: msaResult.studyVariation,
+        percentStudyVariation: msaResult.percentStudyVariation,
+        discriminationRatio: msaResult.discriminationRatio,
+        numberOfDistinctCategories: msaResult.numberOfDistinctCategories,
+        resolutionPercent: msaResult.resolutionPercent,
+        confidenceIntervalLower: msaResult.confidenceIntervalLower,
+        confidenceIntervalUpper: msaResult.confidenceIntervalUpper,
+        controlLimitLower: msaResult.controlLimitLower,
+        controlLimitUpper: msaResult.controlLimitUpper,
+        cp: msaResult.cp,
+        cpk: msaResult.cpk,
+        toleranceUsedPercent: msaResult.toleranceUsedPercent,
+        suitability: msaResult.suitability,
+        interpretation: msaResult.interpretation,
+        stabilityCheck: msaResult.stabilityCheck,
+        metadata: _metadata,
+      );
+
+      // 4. UI aktualisieren
       if (mounted) {
         setState(() {
-          _analysisResult = msaResult.toFormattedString();
-          _msaResult = msaResult;
+          _analysisResult = msaResultWithMetadata.toFormattedString();
+          _msaResult = msaResultWithMetadata;
           _currentMode = parseResult.mode;
           _measurements = _createMeasurementsFromResult(parseResult, msaResult);
         });
@@ -255,14 +558,79 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
         title: const Text('MSA Type 1 - Measurement System Analysis'),
         elevation: 0,
         actions: [
-          Tooltip(
-            message: widget.isDarkMode ? 'Helles Design' : 'Dunkles Design',
-            child: IconButton(
-              icon:
-                  Icon(widget.isDarkMode ? Icons.light_mode : Icons.dark_mode),
-              onPressed: () {
-                widget.onThemeChanged(!widget.isDarkMode);
-              },
+          PopupMenuButton<String>(
+            tooltip: 'Select Language',
+            onSelected: (String locale) {
+              widget.onLocaleChanged(locale);
+            },
+            itemBuilder: (BuildContext context) =>
+                LocalizationService.availableLocales
+                    .map((locale) => PopupMenuItem<String>(
+                          value: locale,
+                          child: Row(
+                            children: [
+                              Icon(Icons.language, size: 18),
+                              const SizedBox(width: 10),
+                              Text(LocalizationService.getLocaleName(locale)),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: Center(
+                child: Icon(Icons.language),
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: LocalizationService().t('selectTheme'),
+            onSelected: (String theme) {
+              widget.onThemeChanged(theme);
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'light',
+                child: Row(
+                  children: [
+                    Icon(Icons.light_mode, size: 18),
+                    SizedBox(width: 10),
+                    Text('Light'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'dark',
+                child: Row(
+                  children: [
+                    Icon(Icons.dark_mode, size: 18),
+                    SizedBox(width: 10),
+                    Text('Dark'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'dracula',
+                child: Row(
+                  children: [
+                    Icon(Icons.palette, size: 18),
+                    SizedBox(width: 10),
+                    Text('Dracula'),
+                  ],
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Center(
+                child: Icon(
+                  widget.currentTheme == 'dracula'
+                      ? Icons.palette
+                      : widget.currentTheme == 'dark'
+                          ? Icons.dark_mode
+                          : Icons.light_mode,
+                ),
+              ),
             ),
           ),
         ],
@@ -276,16 +644,16 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Messsystemanalyse (AIAG Standard)',
-                  style: TextStyle(
+                Text(
+                  LocalizationService().t('analysisTitle'),
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Typ 1 - Variables (Messwerte)',
+                  LocalizationService().t('analysisSubtitle'),
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey.shade600,
@@ -294,6 +662,197 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
               ],
             ),
           ),
+
+          // 1.5. Demo Mode Toggle & Info
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _isDemoMode,
+                          onChanged: (bool? newValue) {
+                            setState(() {
+                              _isDemoMode = newValue ?? false;
+                              if (_isDemoMode) {
+                                _runDemoAnalysis();
+                              } else {
+                                _analysisResult = null;
+                                _measurements = null;
+                                _msaResult = null;
+                              }
+                            });
+                          },
+                        ),
+                        Text(
+                          LocalizationService().t('demoModeActivate'),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (!_isDemoMode && _analysisResult == null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Container(
+                          padding: const EdgeInsets.all(12.0),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            border: Border.all(color: Colors.blue.shade200),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    LocalizationService().t('firstSteps'),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _buildInstructionStep(
+                                1,
+                                LocalizationService().t('demoStep1Title'),
+                                LocalizationService().t('demoStep1Description'),
+                              ),
+                              const SizedBox(height: 10),
+                              _buildInstructionStep(
+                                2,
+                                LocalizationService().t('step2Title'),
+                                LocalizationService().t('step2Description'),
+                              ),
+                              const SizedBox(height: 10),
+                              _buildInstructionStep(
+                                3,
+                                LocalizationService().t('demoStep3Title'),
+                                '',
+                              ),
+                              const SizedBox(height: 10),
+                              _buildInstructionStep(
+                                4,
+                                LocalizationService().t('step4Title'),
+                                LocalizationService().t('step4Description'),
+                              ),
+                              const SizedBox(height: 10),
+                              _buildInstructionStep(
+                                5,
+                                LocalizationService().t('step5Title'),
+                                LocalizationService().t('step5Description'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 1.5. CSV Upload Instructions
+          if (_analysisResult == null)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.blue.shade700,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            LocalizationService().t('csvFormatLabel'),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        LocalizationService().t('format1D'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        LocalizationService().t('format2D'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        LocalizationService().t('format2DDistances'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10.0),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          border: Border.all(color: Colors.green.shade200),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: Colors.green.shade700,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                LocalizationService().t('fileWillBeAnalyzed'),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // 2. Datensatz-Übersicht
           if (_measurements != null)
@@ -305,9 +864,9 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Datensatz-Übersicht',
-                        style: TextStyle(
+                      Text(
+                        LocalizationService().t('datasetOverview'),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
@@ -315,22 +874,31 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
                       const SizedBox(height: 8),
                       if (_measurements != null && _measurements!.isNotEmpty)
                         Text(
-                          'Anzahl Messungen: ${_measurements!.length}',
+                          LocalizationService().t('numMeasurements').replaceAll(
+                              '{count}', _measurements!.length.toString()),
                           style: const TextStyle(fontSize: 12),
                         ),
                       if (_measurements != null && _measurements!.isNotEmpty)
                         Text(
-                          'Erste Messung: ${_measurements!.first.distance.toStringAsFixed(6)}',
+                          LocalizationService()
+                              .t('firstMeasurement')
+                              .replaceAll(
+                                  '{value}',
+                                  _measurements!.first.distance
+                                      .toStringAsFixed(6)),
                           style: const TextStyle(fontSize: 12),
                         ),
                       if (_measurements == null || _measurements!.isEmpty)
-                        const Text(
-                          'Keine Messdaten für diesen Modus\n(nur für 2D Distanzen)',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        Text(
+                          LocalizationService().t('noMeasurementData'),
+                          style:
+                              const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       if (_measurements != null && _measurements!.isNotEmpty)
                         Text(
-                          'Letzte Messung: ${_measurements!.last.distance.toStringAsFixed(6)}',
+                          LocalizationService().t('lastMeasurement').replaceAll(
+                              '{value}',
+                              _measurements!.last.distance.toStringAsFixed(6)),
                           style: const TextStyle(fontSize: 12),
                         ),
                     ],
@@ -338,6 +906,9 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
                 ),
               ),
             ),
+
+          // 2.5 Metadata Form
+          _buildMetadataForm(),
 
           // 3. Analyse-Ergebnisse
           if (_analysisResult != null)
@@ -348,108 +919,214 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
                 ),
+                padding: const EdgeInsets.all(12.0),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(12.0),
                   scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: 500,
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        _analysisResult!,
-                        style: const TextStyle(
-                          fontFamily: 'Courier',
-                          fontSize: 11,
-                        ),
-                      ),
+                  child: SelectableText(
+                    _analysisResult!,
+                    style: const TextStyle(
+                      fontFamily: 'Courier',
+                      fontSize: 11,
                     ),
                   ),
                 ),
               ),
             ),
 
-          // 4. Analysis Mode Selector
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Demo-Modus wählen:',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SegmentedButton<AnalysisMode>(
-                      segments: const <ButtonSegment<AnalysisMode>>[
-                        ButtonSegment<AnalysisMode>(
-                          value: AnalysisMode.oneD,
-                          label: Text('1D'),
-                          tooltip: 'Nur X-Werte',
-                        ),
-                        ButtonSegment<AnalysisMode>(
-                          value: AnalysisMode.twoD_direct,
-                          label: Text('2D direkt'),
-                          tooltip: 'X,Y Wertepaare',
-                        ),
-                        ButtonSegment<AnalysisMode>(
-                          value: AnalysisMode.twoD_distances,
-                          label: Text('2D Distanzen'),
-                          tooltip: 'Distanzen zwischen Punkten',
-                        ),
-                      ],
-                      selected: <AnalysisMode>{_currentMode},
-                      onSelectionChanged: (Set<AnalysisMode> newSelection) {
-                        setState(() {
-                          _currentMode = newSelection.first;
-                        });
-                      },
-                    ),
-                  ],
+          if (_msaResult is MsaType1Result)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Builder(
+                    builder: (context) {
+                      final result = _msaResult as MsaType1Result;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            LocalizationService()
+                                .t('discriminationSectionTitle'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${LocalizationService().t('discriminationRatio')}: '
+                            '${_formatMetricValue(result.discriminationRatio)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('distinctCategories')}: '
+                            '${result.numberOfDistinctCategories ?? LocalizationService().t('na')}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('resolutionPercentLabel')}: '
+                            '${result.resolutionPercent != null ? '${_formatMetricValue(result.resolutionPercent)}%' : LocalizationService().t('na')}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            LocalizationService().t('confidenceSectionTitle'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${LocalizationService().t('ciLower')}: '
+                            '${_formatMetricValue(result.confidenceIntervalLower, decimals: 6)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('ciUpper')}: '
+                            '${_formatMetricValue(result.confidenceIntervalUpper, decimals: 6)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('controlLimitLower')}: '
+                            '${_formatMetricValue(result.controlLimitLower, decimals: 6)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('controlLimitUpper')}: '
+                            '${_formatMetricValue(result.controlLimitUpper, decimals: 6)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            LocalizationService().t('processCapabilityTitle'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${LocalizationService().t('cpLabel')}: '
+                            '${_formatMetricValue(result.cp, decimals: 3)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('cpkLabel')}: '
+                            '${_formatMetricValue(result.cpk, decimals: 3)}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            '${LocalizationService().t('toleranceUsedPercentLabel')}: '
+                            '${result.toleranceUsedPercent != null ? '${_formatMetricValue(result.toleranceUsedPercent)}%' : LocalizationService().t('na')}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
+
+          // 4. Analysis Mode Selector (nur wenn Demo Mode aktiv)
+          if (_isDemoMode)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        LocalizationService().t('demoAnalysisMode'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      SegmentedButton<AnalysisMode>(
+                        segments: <ButtonSegment<AnalysisMode>>[
+                          ButtonSegment<AnalysisMode>(
+                            value: AnalysisMode.oneD,
+                            label: Text(LocalizationService().t('mode1DLabel')),
+                            tooltip: LocalizationService().t('mode1DTooltip'),
+                          ),
+                          ButtonSegment<AnalysisMode>(
+                            value: AnalysisMode.twoD_direct,
+                            label: Text(
+                                LocalizationService().t('mode2DDirectLabel')),
+                            tooltip:
+                                LocalizationService().t('mode2DDirectTooltip'),
+                          ),
+                          ButtonSegment<AnalysisMode>(
+                            value: AnalysisMode.twoD_distances,
+                            label: Text(LocalizationService()
+                                .t('mode2DDistancesLabel')),
+                            tooltip: LocalizationService()
+                                .t('mode2DDistancesTooltip'),
+                          ),
+                        ],
+                        selected: <AnalysisMode>{_currentMode},
+                        onSelectionChanged: (Set<AnalysisMode> newSelection) {
+                          setState(() {
+                            _currentMode = newSelection.first;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // 5. Action Buttons
           Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Wrap(
+              spacing: 10.0,
+              runSpacing: 10.0,
               children: [
-                ElevatedButton.icon(
+                FilledButton.tonalIcon(
                   onPressed: _isLoading ? null : _runDemoAnalysis,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Demo-Analyse ausführen'),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: Text(LocalizationService().t('demo')),
                 ),
-                const SizedBox(height: 8),
-                TextButton(
+                OutlinedButton.icon(
                   onPressed: () => _showCsvUploadDialog(),
-                  child: const Text('Eigene CSV-Datei laden'),
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: Text(LocalizationService().t('csvLoad')),
                 ),
-                const SizedBox(height: 8),
                 if (_msaResult != null)
-                  ElevatedButton.icon(
+                  FilledButton.icon(
                     onPressed: _isLoading ? null : _exportToPdf,
-                    icon: const Icon(Icons.picture_as_pdf),
-                    label: const Text('Als PDF exportieren'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                    ),
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label: Text(LocalizationService().t('pdf')),
                   ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
+                if (_msaResult != null)
+                  FilledButton.tonalIcon(
+                    onPressed: _isLoading ? null : _saveAnalysis,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: Text(LocalizationService().t('save')),
+                  ),
+                FilledButton.tonalIcon(
+                  onPressed: _isLoading ? null : _loadAnalysis,
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: Text(LocalizationService().t('load')),
+                ),
+                FilledButton.tonalIcon(
                   onPressed: () {
                     exit(0);
                   },
-                  icon: const Icon(Icons.exit_to_app),
-                  label: const Text('Beenden'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                  ),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: Text(LocalizationService().t('exit')),
                 ),
               ],
             ),
@@ -474,7 +1151,7 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
-        dialogTitle: 'CSV-Datei auswählen',
+        dialogTitle: LocalizationService().t('selectCsvFile'),
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -487,7 +1164,9 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fehler beim Öffnen der Datei: $e'),
+            content: Text(LocalizationService()
+                .t('fileOpenError')
+                .replaceAll('{error}', e.toString())),
             backgroundColor: Colors.red,
           ),
         );
@@ -502,7 +1181,9 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       // 1. CSV-Datei lesen
       final file = File(filePath);
       if (!await file.exists()) {
-        throw Exception('Datei nicht gefunden: $filePath');
+        throw Exception(LocalizationService()
+            .t('fileNotFound')
+            .replaceAll('{path}', filePath));
       }
 
       final csvContent = await file.readAsString();
@@ -528,13 +1209,17 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       await _analyzeData(csvContent, modeToUse);
     } catch (e) {
       setState(() {
-        _analysisResult = 'Fehler beim Laden der Datei:\n\n$e';
+        _analysisResult = LocalizationService()
+            .t('errorLoadingFile')
+            .replaceAll('{error}', e.toString());
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fehler: $e'),
+            content: Text(LocalizationService()
+                .t('error')
+                .replaceAll('{error}', e.toString())),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -551,23 +1236,24 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Analysemodus wählen'),
-          content: const Text(
-            'Diese CSV hat 2 Spalten (x,y).\n\n'
-            'Wie möchten Sie diese analysieren?',
+          title: Text(LocalizationService().t('selectAnalysisMode')),
+          content: Text(
+            LocalizationService().t('csvTwoColumnsInfo') +
+                '\n\n'
+                    '${LocalizationService().t('howToAnalyze')}',
           ),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context, AnalysisMode.twoD_direct);
               },
-              child: const Text('2D direkt\n(X,Y Wertepaare)'),
+              child: Text(LocalizationService().t('modeSelectDirect')),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pop(context, AnalysisMode.twoD_distances);
               },
-              child: const Text('2D Distanzen\n(zwischen Punktparen)'),
+              child: Text(LocalizationService().t('modeSelectDistances')),
             ),
           ],
         );
@@ -625,5 +1311,642 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Save analysis to JSON file
+  Future<void> _saveAnalysis() async {
+    if (_measurements == null || _msaResult == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Keine Analysedaten zum Speichern'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Create save package
+      final analysisName = _customerController.text.isEmpty
+          ? _partNumberController.text.isEmpty
+              ? 'Analyse_${DateTime.now().toIso8601String().split('.')[0].replaceAll(':', '-')}'
+              : 'Analyse_${_partNumberController.text}'
+          : 'Analyse_${_customerController.text}';
+
+      final package = AnalysisSavePackage(
+        createdAt: DateTime.now(),
+        analysisName: analysisName,
+        measurements: _measurements!,
+        metadata: _metadata,
+        result: _msaResult,
+      );
+
+      // Get Documents folder
+      String filePath;
+      if (Platform.isWindows) {
+        final documentsFolder = Directory(
+            'C:\\Users\\${Platform.environment['USERNAME']}\\Documents\\MSA Analysen');
+        if (!await documentsFolder.exists()) {
+          await documentsFolder.create(recursive: true);
+        }
+        final fileName =
+            '${analysisName}_${DateTime.now().toIso8601String().split('.')[0].replaceAll(':', '-')}.json';
+        filePath = '${documentsFolder.path}\\$fileName';
+      } else {
+        // For other platforms, use Documents folder (usually)
+        final fileName =
+            '${analysisName}_${DateTime.now().toIso8601String().split('.')[0].replaceAll(':', '-')}.json';
+        filePath =
+            '${Platform.environment['HOME']}/Documents/MSA Analysen/$fileName';
+      }
+
+      // Write file
+      final file = File(filePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsString(package.toJsonString());
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Analyse gespeichert: $filePath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Load analysis from JSON file
+  Future<void> _loadAnalysis() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Analyse laden',
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        setState(() => _isLoading = true);
+
+        final file = File(result.files.first.path!);
+        final jsonString = await file.readAsString();
+
+        final package = AnalysisSavePackage.fromJsonString(jsonString);
+
+        setState(() {
+          // Restore measurements
+          _measurements = package.measurements;
+
+          // Restore metadata
+          _metadata = package.metadata ?? AnalysisMetadata();
+          _partNumberController.text = _metadata.partNumber ?? '';
+          _partNameController.text = _metadata.partName ?? '';
+          _drawingReferenceController.text = _metadata.drawingReference ?? '';
+          _instrumentNameController.text = _metadata.instrumentName ?? '';
+          _instrumentIdController.text = _metadata.instrumentId ?? '';
+          _calibrationStatusController.text = _metadata.calibrationStatus ?? '';
+          _calibrationDateController.text =
+              _metadata.calibrationDate?.toIso8601String().split('T').first ??
+                  '';
+          _analyzedByController.text = _metadata.analyzedBy ?? '';
+          _reviewedByController.text = _metadata.reviewedBy ?? '';
+          _customerController.text = _metadata.customer ?? '';
+          _companyController.text = _metadata.company ?? '';
+          _departmentController.text = _metadata.department ?? '';
+          _machineController.text = _metadata.machine ?? '';
+          _processOrOperationController.text =
+              _metadata.processOrOperation ?? '';
+          _measurementProcedureController.text =
+              _metadata.measurementProcedure ?? '';
+          _samplingPlanController.text = _metadata.samplingPlan ?? '';
+          _temperatureController.text = _metadata.temperature?.toString() ?? '';
+          _humidityController.text = _metadata.humidity?.toString() ?? '';
+          _numberOfOperatorsController.text =
+              _metadata.numberOfOperators?.toString() ?? '';
+          _numberOfReplicatesController.text =
+              _metadata.numberOfReplicates?.toString() ?? '';
+          _numberOfPartsController.text =
+              _metadata.numberOfParts?.toString() ?? '';
+          _uslController.text = _metadata.upperSpecLimit?.toString() ?? '';
+          _lslController.text = _metadata.lowerSpecLimit?.toString() ?? '';
+
+          // Restore analysis result
+          _msaResult = package.result;
+
+          // Update UI to show loaded data
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✓ Analyse geladen: ${package.analysisName}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Laden: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Builds an instruction step for the beginner guide
+  Widget _buildInstructionStep(
+      int stepNumber, String title, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.blue.shade700,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              '$stepNumber',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Builds the metadata form section
+  Widget _buildMetadataForm() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                LocalizationService().t('analysisInfo'),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Part Information Section
+              Text(
+                LocalizationService().t('partInfo'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _partNumberController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('partNumber'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _partNameController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('partName'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _drawingReferenceController,
+                decoration: InputDecoration(
+                  labelText: LocalizationService().t('drawingReference'),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (_) => _updateMetadataFromControllers(),
+              ),
+              const SizedBox(height: 12),
+              // Specification Limits
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _uslController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('upperLimit'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _lslController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('lowerLimit'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Measurement System Section
+              Text(
+                LocalizationService().t('measurementSystem'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _instrumentNameController,
+                decoration: InputDecoration(
+                  labelText: LocalizationService().t('instrumentName'),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (_) => _updateMetadataFromControllers(),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _instrumentIdController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('instrumentId'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _calibrationStatusController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('calibrationStatus'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _calibrationDateController,
+                keyboardType: TextInputType.datetime,
+                decoration: InputDecoration(
+                  labelText: LocalizationService().t('calibrationDate'),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (_) => _updateMetadataFromControllers(),
+              ),
+              const SizedBox(height: 20),
+              // Analysis Information Section
+              Text(
+                LocalizationService().t('analysisDetails'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _analyzedByController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('analyzedBy'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _customerController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('customer'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _reviewedByController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('reviewedBy'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _departmentController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('department'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _companyController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('company'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _machineController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('machine'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _processOrOperationController,
+                      decoration: InputDecoration(
+                        labelText:
+                            LocalizationService().t('processOrOperation'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _measurementProcedureController,
+                      decoration: InputDecoration(
+                        labelText:
+                            LocalizationService().t('measurementProcedure'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _samplingPlanController,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('samplingPlan'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _temperatureController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('temperature'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _humidityController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('humidity'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _numberOfOperatorsController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: LocalizationService().t('numberOfOperators'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _numberOfReplicatesController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText:
+                            LocalizationService().t('numberOfReplicates'),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => _updateMetadataFromControllers(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _numberOfPartsController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: LocalizationService().t('numberOfParts'),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (_) => _updateMetadataFromControllers(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatMetricValue(double? value, {int decimals = 2}) {
+    if (value == null) {
+      return LocalizationService().t('na');
+    }
+    return value.toStringAsFixed(decimals);
   }
 }
