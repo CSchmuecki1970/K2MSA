@@ -1,0 +1,19 @@
+name: msa_analysis
+description: MSA Type 1 (Variables) Measurement System Analysis nach AIAG Standard
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: ^5.3.0
+  pdf: ^3.10.0
+  path_provider: ^2.0.0
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.24.0

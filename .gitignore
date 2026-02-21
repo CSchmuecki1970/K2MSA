@@ -1,0 +1,112 @@
+# Flutter/Dart build artifacts
+**/flutter/Flutter.podspec
+**/.dart_tool/
+**/doc/api/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Generated files
+*.g.dart
+*.config.dart
+
+# Analysis
+.analysis_options.ignore
+.packages
+analysis_option.yaml
+
+# iOS/macOS
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vscode/*
+!**/ios/**/.vscode/settings.json
+**/ios/**/.idea/
+**/ios/**/xcuserdata/
+**/ios/**/Flutter/Flutter.podspec
+**/ios/**/Flutter/Flutter.framework
+**/ios/**/Flutter/Flutter.modulemap
+**/ios/**/GeneratedPluginRegistrant.h
+**/ios/**/GeneratedPluginRegistrant.m
+**/ios/**/GeneratedPluginRegistrant.swift
+**/ios/**/Flutter/ephemeralFlutterModifiedFiles.txt
+**/ios/**/Flutter/flutter_export_environment.sh
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.modulemap
+**/ios/Flutter/GeneratedPluginRegistrant.h
+**/ios/Flutter/GeneratedPluginRegistrant.m
+**/ios/Flutter/GeneratedPluginRegistrant.swift
+
+# Android/Gradle
+.gradle
+**/.gradle/
+**/.gradle
+**/local.properties
+**/sgithub.properties
+key.properties
+**/*.apk
+**/*.jks
+**/*.keystore
+*.gradle
+**android/app/debug
+**android/app/profile
+**android/app/release
+android/local.properties
+
+# Web
+lib/generated_plugin_registrant.dart
+lib/generated_plugins.dart
+
+# Windows
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
+windows/flutter/generated_plugins.h
+
+# macOS
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Flutter/Flutter.podspec
+macos/Podfile.lock
+
+# Linux
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugin_registrant.h
+linux/flutter/generated_plugin_registrant.cmake
+linux/flutter/generated_plugins.cmake
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+.DS_Store
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Output files
+*.log
+*.txt
+results_msa_results.json
+
+# Temp files
+*.tmp
+~*
+.~*
+
+# Generated
+.dart_tool/
+.packages
+pubspec.lock
