@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/msa_result.dart';
 import '../models/measurement_data.dart';
 import '../models/analysis_metadata.dart';
+import '../models/process_monitoring_result.dart';
 
 /// Service für PDF-Export von MSA-Analyseergebnissen
 class PdfExportService {
@@ -1246,6 +1248,654 @@ class PdfExportService {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Erstellt ein PDF-Bericht für Prozessüberwachungs-Analyseergebnisse
+  static Future<String> generateProcessMonitoringPdfReport({
+    required ProcessMonitoringResult result,
+    String? fileName,
+  }) async {
+    final pdf = pw.Document();
+
+    // Generate chart if data is available
+    pw.Widget? chartWidget;
+    if (result.coordinateX != null &&
+        result.coordinateY != null &&
+        result.coordinateX!.isNotEmpty &&
+        result.coordinateY!.isNotEmpty) {
+      // Use scatter plot for 2D coordinates
+      chartWidget = await _generateScatterPlotWidget(
+          result.coordinateX!, result.coordinateY!);
+    } else if (result.measurementValues != null &&
+        result.trendlineValues != null &&
+        result.measurementValues!.isNotEmpty &&
+        result.trendlineValues!.isNotEmpty) {
+      // Use line chart for 1D measurements
+      chartWidget = await _generateLineChartWidget(
+          result.measurementValues!, result.trendlineValues!);
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        header: (context) => _buildProcessMonitoringHeader(),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildProcessMonitoringTitleSection(),
+          pw.SizedBox(height: 20),
+          _buildProcessMonitoringStatisticsSection(result),
+          pw.SizedBox(height: 20),
+          _buildProcessMonitoringInstrumentSection(result),
+          pw.SizedBox(height: 20),
+          _buildProcessMonitoringDriftSection(result),
+          pw.SizedBox(height: 20),
+          if (chartWidget != null) ...[chartWidget, pw.SizedBox(height: 20)],
+          _buildProcessMonitoringSignalSection(result),
+          pw.SizedBox(height: 20),
+          _buildProcessMonitoringStatusSection(result),
+          pw.SizedBox(height: 20),
+          _buildProcessMonitoringInterpretationSection(result),
+        ],
+      ),
+    );
+
+    final directory = await getApplicationDocumentsDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filename = fileName ?? 'ProcessMonitoring_$timestamp.pdf';
+    final filePath = '${directory.path}/$filename';
+
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save());
+
+    return filePath;
+  }
+
+  static pw.Widget _buildProcessMonitoringHeader() {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          bottom: pw.BorderSide(
+            color: PdfColors.amber,
+            width: 2,
+          ),
+        ),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Prozessüberwachungs-Analyse',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.amber,
+                ),
+              ),
+              pw.Text(
+                'Dynamische Prozess-Überwachung',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+            ],
+          ),
+          pw.Text(
+            DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now()),
+            style: const pw.TextStyle(fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringTitleSection() {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.amber, width: 2),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Prozessüberwachungs-Analyse',
+            style: pw.TextStyle(
+              fontSize: 20,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.amber,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            'Analyse dynamischer und driftender Prozesse',
+            style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringStatisticsSection(
+      ProcessMonitoringResult result) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '📊 Statistische Basisdaten',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(1.5),
+            },
+            children: [
+              _buildTableRow('Messungen (n)', '${result.sampleCount}'),
+              _buildTableRow(
+                  'Mittelwert (μ)', '${result.mean.toStringAsFixed(3)}'),
+              _buildTableRow('Standardabweichung (σ)',
+                  '${result.standardDeviation.toStringAsFixed(3)}'),
+              _buildTableRow('Minimum', '${result.min.toStringAsFixed(3)}'),
+              _buildTableRow('Maximum', '${result.max.toStringAsFixed(3)}'),
+              _buildTableRow('Spannweite',
+                  '${(result.max - result.min).toStringAsFixed(3)}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringInstrumentSection(
+      ProcessMonitoringResult result) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '🔧 Instrumenten-Variabilität',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(1.5),
+            },
+            children: [
+              _buildTableRow('σ Instrument',
+                  '${result.instrumentStdDev.toStringAsFixed(3)}'),
+              _buildTableRow('Wiederholbarkeit (6σ)',
+                  '${result.instrumentRepeatability.toStringAsFixed(3)}'),
+              _buildTableRow(
+                  'Stabile Regionen', '${result.stableRegionsDetected}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringDriftSection(
+      ProcessMonitoringResult result) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '📈 Prozess-Drift',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(1.5),
+            },
+            children: [
+              _buildTableRow('Trendsteigung',
+                  '${result.driftSlope.toStringAsFixed(6)}/Messung'),
+              _buildTableRow('Trend-Stärke (R²)',
+                  '${result.driftTrendStrength.toStringAsFixed(4)}'),
+              _buildTableRow('Gesamte Änderung',
+                  '${result.totalDriftChange.toStringAsFixed(3)}'),
+              _buildTableRow('Drift-Erklärung',
+                  '${(result.driftExplanationPercentage * 100).toStringAsFixed(1)}%'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringSignalSection(
+      ProcessMonitoringResult result) {
+    final snrStatus = result.signalToNoiseRatio > 10
+        ? 'Exzellent (≥10)'
+        : result.signalToNoiseRatio > 3
+            ? 'Gut (3-10)'
+            : 'Schwach (<3)';
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '📊 Signal-zu-Rausch-Verhältnis',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(1.5),
+            },
+            children: [
+              _buildTableRow(
+                  'SNR', '${result.signalToNoiseRatio.toStringAsFixed(2)}'),
+              _buildTableRow('SNR-Status', snrStatus),
+              _buildTableRow('Verfolgungsgenauigkeit',
+                  '${(result.trackingAccuracy * 100).toStringAsFixed(1)}%'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringStatusSection(
+      ProcessMonitoringResult result) {
+    final statusText =
+        result.instrumentStatus == InstrumentMonitoringStatus.stable
+            ? 'STABIL - Instrument zeigt keine signifikante Drift'
+            : 'DRIFTEND - Instrument selbst hat Drift-Komponente';
+
+    final statusColor =
+        result.instrumentStatus == InstrumentMonitoringStatus.stable
+            ? PdfColors.green
+            : PdfColors.orange;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: statusColor, width: 2),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '✓ Instrument-Status',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: statusColor,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            statusText,
+            style: const pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildProcessMonitoringInterpretationSection(
+      ProcessMonitoringResult result) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            '💡 Interpretation & Empfehlungen',
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Text(
+            result.interpretation,
+            style: const pw.TextStyle(fontSize: 10),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Text(
+            'Empfohlene Maßnahmen:',
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 5),
+          ...result.recommendations
+              .map((rec) => pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 5, left: 10),
+                    child: pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          '• ',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                        pw.Expanded(
+                          child: pw.Text(
+                            rec,
+                            style: const pw.TextStyle(fontSize: 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+        ],
+      ),
+    );
+  }
+
+  static pw.TableRow _buildTableRow(String label, String value) {
+    return pw.TableRow(
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(5),
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(5),
+          child: pw.Text(
+            value,
+            style: const pw.TextStyle(fontSize: 10),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Generate a scatter plot widget using Python matplotlib script
+  static Future<pw.Widget> _generateScatterPlotWidget(
+      List<double> coordinateX, List<double> coordinateY) async {
+    try {
+      // Use temp directory instead of documents for better compatibility
+      final tempDir = await getTemporaryDirectory();
+      final chartPath =
+          '${tempDir.path}/scatter_${DateTime.now().millisecondsSinceEpoch}.png';
+
+      // Prepare JSON input for Python script
+      final chartData = {
+        'coordinateX': coordinateX,
+        'coordinateY': coordinateY,
+        'output_path': chartPath,
+        'title': 'X-Y Koordinaten Streudiagramm',
+      };
+
+      // Find Python script - try multiple locations
+      final scriptPaths = [
+        'bin/generate_chart.py',
+        './bin/generate_chart.py',
+      ];
+
+      String? pythonScript;
+      for (final scriptPath in scriptPaths) {
+        final file = File(scriptPath);
+        if (await file.exists()) {
+          pythonScript = scriptPath;
+          break;
+        }
+      }
+
+      if (pythonScript == null) {
+        print('Python script not found at: ${scriptPaths.join(", ")}');
+        return _buildChartErrorWidget();
+      }
+
+      // Call Python script with stdin for JSON data
+      final process = await Process.start('python', [pythonScript]);
+      process.stdin.write(jsonEncode(chartData));
+      await process.stdin.close();
+
+      final exitCode = await process.exitCode;
+      if (exitCode != 0) {
+        final stderr = await process.stderr.transform(utf8.decoder).join();
+        print('Python script error: $stderr');
+        return _buildChartErrorWidget();
+      }
+
+      // Wait a moment for file to be written
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Check if file exists
+      final chartFile = File(chartPath);
+      if (!await chartFile.exists()) {
+        print('Chart file was not created at $chartPath');
+        return _buildChartErrorWidget();
+      }
+
+      // Read image bytes
+      final imageBytes = await chartFile.readAsBytes();
+
+      // Create image widget
+      final imageWidget = pw.Container(
+        padding: const pw.EdgeInsets.all(15),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              '📊 X-Y Streudiagramm',
+              style: pw.TextStyle(
+                fontSize: 13,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue800,
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Image(
+              pw.MemoryImage(imageBytes),
+              width: 500,
+              height: 375,
+            ),
+          ],
+        ),
+      );
+
+      // Clean up temp file
+      try {
+        await chartFile.delete();
+      } catch (e) {
+        print('Failed to delete temp chart file: $e');
+      }
+
+      return imageWidget;
+    } catch (e) {
+      print('Error generating scatter plot: $e');
+      return _buildChartErrorWidget();
+    }
+  }
+
+  /// Generate a line chart widget using Python matplotlib script
+  static Future<pw.Widget> _generateLineChartWidget(
+      List<double> measurements, List<double> trendline) async {
+    try {
+      // Use temp directory instead of documents for better compatibility
+      final tempDir = await getTemporaryDirectory();
+      final chartPath =
+          '${tempDir.path}/chart_${DateTime.now().millisecondsSinceEpoch}.png';
+
+      // Prepare JSON input for Python script
+      final chartData = {
+        'measurements': measurements,
+        'trendline': trendline,
+        'output_path': chartPath,
+        'title': 'Messungen und Trend',
+      };
+
+      // Find Python script - try multiple locations
+      final scriptPaths = [
+        'bin/generate_chart.py',
+        './bin/generate_chart.py',
+      ];
+
+      String? pythonScript;
+      for (final scriptPath in scriptPaths) {
+        final file = File(scriptPath);
+        if (await file.exists()) {
+          pythonScript = scriptPath;
+          break;
+        }
+      }
+
+      if (pythonScript == null) {
+        print('Python script not found at: ${scriptPaths.join(", ")}');
+        return _buildChartErrorWidget();
+      }
+
+      // Call Python script with stdin for JSON data
+      final process = await Process.start('python', [pythonScript]);
+      process.stdin.write(jsonEncode(chartData));
+      await process.stdin.close();
+
+      final exitCode = await process.exitCode;
+      if (exitCode != 0) {
+        final stderr = await process.stderr.transform(utf8.decoder).join();
+        print('Python script error: $stderr');
+        return _buildChartErrorWidget();
+      }
+
+      // Wait a moment for file to be written
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Check if file exists
+      final chartFile = File(chartPath);
+      if (!await chartFile.exists()) {
+        print('Chart file was not created at $chartPath');
+        return _buildChartErrorWidget();
+      }
+
+      // Read image bytes
+      final imageBytes = await chartFile.readAsBytes();
+
+      // Create image widget
+      final imageWidget = pw.Container(
+        padding: const pw.EdgeInsets.all(15),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              '📊 Messungen & Trend',
+              style: pw.TextStyle(
+                fontSize: 13,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue800,
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Image(
+              pw.MemoryImage(imageBytes),
+              width: 500,
+              height: 375,
+            ),
+          ],
+        ),
+      );
+
+      // Clean up temp file
+      try {
+        await chartFile.delete();
+      } catch (e) {
+        print('Failed to delete temp chart file: $e');
+      }
+
+      return imageWidget;
+    } catch (e) {
+      print('Error generating line chart: $e');
+      return _buildChartErrorWidget();
+    }
+  }
+
+  static pw.Widget _buildChartErrorWidget() {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.red),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Text(
+        'Chart generation failed',
+        style: pw.TextStyle(
+          fontSize: 11,
+          color: PdfColors.red,
+        ),
       ),
     );
   }

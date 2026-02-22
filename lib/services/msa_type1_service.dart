@@ -122,6 +122,18 @@ class MsaType1Service {
     final toleranceUsedPercent =
         _calculateToleranceUsedPercent(studyVariation, effective_tolerance);
 
+    // Stabilitätsprüfung (optional)
+    Map<String, dynamic>? stabilityCheck;
+    if (analyzeStability && values.length > 10) {
+      final trendData = CalculationService.calculateTrendFromValues(values);
+      stabilityCheck = {
+        'hasTrend': trendData['r_squared']! > 0.3,
+        'trendSlope': trendData['slope'],
+        'r_squared': trendData['r_squared'],
+        'sampleCount': values.length,
+      };
+    }
+
     return MsaType1Result(
       mode: AnalysisMode.oneD,
       mean: mean,
@@ -149,7 +161,7 @@ class MsaType1Service {
       // Assessment
       suitability: suitability,
       interpretation: interpretation,
-      stabilityCheck: null,
+      stabilityCheck: stabilityCheck,
     );
   }
 
@@ -221,6 +233,18 @@ class MsaType1Service {
     final toleranceUsedPercent =
         _calculateToleranceUsedPercent(studyVariation, effective_tolerance);
 
+    // Stabilitätsprüfung (optional)
+    Map<String, dynamic>? stabilityCheck;
+    if (analyzeStability && allValues.length > 10) {
+      final trendData = CalculationService.calculateTrendFromValues(allValues);
+      stabilityCheck = {
+        'hasTrend': trendData['r_squared']! > 0.3,
+        'trendSlope': trendData['slope'],
+        'r_squared': trendData['r_squared'],
+        'sampleCount': allValues.length,
+      };
+    }
+
     return MsaType1Result(
       mode: AnalysisMode.twoD_direct,
       mean: mean,
@@ -248,7 +272,7 @@ class MsaType1Service {
       // Assessment
       suitability: suitability,
       interpretation: interpretation,
-      stabilityCheck: null,
+      stabilityCheck: stabilityCheck,
     );
   }
 

@@ -168,13 +168,31 @@ class MsaType1Result {
     buffer.writeln('   Eignungsstufe:              $suitStr');
     buffer.writeln('   Interpretation:            $interpretation\n');
 
+    // Stability Check (Enhanced Display)
     if (stabilityCheck != null) {
-      buffer.writeln('📈 STABILITÄTSPRÜFUNG:');
+      final hasTrend = stabilityCheck!['hasTrend'] ?? false;
+      final trendSlope = stabilityCheck!['trendSlope'] ?? 0.0;
+      final rSquared = stabilityCheck!['r_squared'] ?? 0.0;
+      final sampleCount = stabilityCheck!['sampleCount'] ?? 0;
+
+      buffer.writeln('📊 STABILITÄTSANALYSE:');
+      buffer.writeln('   Stichprobengröße:          $sampleCount Messungen');
       buffer.writeln(
-          '   Trend erkannt:             ${stabilityCheck!['hasTrend'] ?? false}');
+          '   R² (Bestimmtheitsmaß):     ${rSquared.toStringAsFixed(4)} ${rSquared > 0.3 ? "⚠️" : "✓"}');
       buffer.writeln(
-          '   Trendsteigung:             ${(stabilityCheck!['trendSlope'] ?? 0).toStringAsFixed(6)}');
-      buffer.writeln('\n');
+          '   Trendsteigung:             ${trendSlope.toStringAsFixed(8)} pro Messung');
+
+      final stabilityStatus =
+          hasTrend ? '⚠ INSTABIL (Trend erkannt)' : '✓ STABIL';
+      buffer.writeln('   Status:                    $stabilityStatus');
+
+      if (hasTrend) {
+        final direction = trendSlope > 0 ? 'aufwärts' : 'abwärts';
+        buffer.writeln(
+            '   ⚠️  Warnung: Systematischer Trend $direction erkannt!');
+        buffer.writeln('      → Kalibrierung oder Systemcheck empfohlen');
+      }
+      buffer.writeln('');
     }
 
     buffer.writeln('╚════════════════════════════════════════════════╝');

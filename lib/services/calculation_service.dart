@@ -146,4 +146,59 @@ class CalculationService {
       'r_squared': rSquared,
     };
   }
+
+  /// Berechnet Trendanalyse (Lineare Regression) für 1D-Werte
+  ///
+  /// Führt lineare Regression durch um Drift über die Messreihe zu erkennen
+  ///
+  /// Parameter:
+  /// - [values]: Liste von Messwerten (1D)
+  ///
+  /// Rückgabe: Map mit:
+  /// - 'slope': Steigung (Drift pro Messung)
+  /// - 'r_squared': Bestimmtheitsmaß (0-1, höher = stärkerer Trend)
+  ///
+  /// Diese Methode ist optimiert für Stabilitätstests
+  /// da sie zeigt, ob Drift über Zeit auftritt
+  static Map<String, double> calculateTrendFromValues(
+    List<double> values,
+  ) {
+    if (values.length < 2) {
+      return {'slope': 0.0, 'r_squared': 0.0};
+    }
+
+    // X = Messung-Index (0, 1, 2, ...)
+    // Y = Messwert
+    final n = values.length.toDouble();
+    late double sumX = 0;
+    late double sumY = 0;
+    late double sumXY = 0;
+    late double sumX2 = 0;
+    late double sumY2 = 0;
+
+    for (int i = 0; i < values.length; i++) {
+      final x = i.toDouble();
+      final y = values[i];
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumX2 += x * x;
+      sumY2 += y * y;
+    }
+
+    // Steigung (Slope) berechnen
+    final slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+
+    // R² (Bestimmtheitsmaß) berechnen
+    final numerator = (n * sumXY - sumX * sumY);
+    final denominator =
+        math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    final rValue = denominator == 0 ? 0.0 : numerator / denominator;
+    final rSquared = rValue * rValue;
+
+    return {
+      'slope': slope,
+      'r_squared': rSquared,
+    };
+  }
 }

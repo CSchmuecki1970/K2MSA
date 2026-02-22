@@ -6,12 +6,33 @@ import 'models/measurement_data.dart';
 import 'models/analysis_mode.dart';
 import 'models/analysis_metadata.dart';
 import 'models/msa_result.dart';
+import 'models/process_monitoring_result.dart';
 import 'models/analysis_save_package.dart';
 import 'services/csv_service.dart';
 import 'services/calculation_service.dart';
 import 'services/msa_type1_service.dart';
+import 'services/process_monitoring_service.dart';
 import 'services/pdf_export_service.dart';
 import 'services/localization_service.dart';
+
+/// Analysis type selector for main UI
+enum AnalysisType {
+  // ignore: constant_identifier_names
+  MSA_TYPE_1,
+  // ignore: constant_identifier_names
+  PROCESS_MONITORING,
+}
+
+extension AnalysisTypeDescription on AnalysisType {
+  String get description {
+    switch (this) {
+      case AnalysisType.MSA_TYPE_1:
+        return 'MSA Typ 1 (Instrument-Fokus)';
+      case AnalysisType.PROCESS_MONITORING:
+        return 'Prozessüberwachung (Prozess-Fokus)';
+    }
+  }
+}
 
 void main() {
   runApp(const MsaAnalysisApp());
@@ -184,8 +205,10 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
   List<MeasurementData>? _measurements;
   bool _isLoading = false;
   bool _isDemoMode = false; // Demo mode toggle
-  dynamic _msaResult; // Speichert das MsaType1Result für PDF-Export
+  dynamic
+      _msaResult; // Speichert das MsaType1Result oder ProcessMonitoringResult
   AnalysisMode _currentMode = AnalysisMode.twoD_distances; // Standard-Modus
+  AnalysisType _analysisType = AnalysisType.MSA_TYPE_1; // Standard: MSA Type 1
 
   // Metadata für Traceability
   late AnalysisMetadata _metadata;
@@ -433,72 +456,127 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
       print(
           '  - 2D distances points: ${parseResult.points_2d_distances.length}');
 
-      // 2. MSA Typ 1 Analyse durchführen
-      print('🔧 Starting MSA analysis...');
-      final msaResult = MsaType1Service.analyzeWithMode(
-        mode: parseResult.mode,
-        values_1d: parseResult.values_1d,
-        points_2d_direct: parseResult.points_2d_direct,
-        points_2d_distances: parseResult.points_2d_distances,
-        measurements_distances: parseResult.mode == AnalysisMode.twoD_distances
-            ? _createMeasurementsFromPoints(parseResult.points_2d_distances)
-            : null,
-        toleranceRange: 10.0,
-        analyzeStability: true,
-      );
-      print('✓ MSA analysis completed');
+      // 2. Wähle Analyse basierend auf Modus
+      print('🔧 Selected Analysis: ${_analysisType.description}');
 
-      // 3. Metadaten an Ergebnis anhängen
-      final msaResultWithMetadata = MsaType1Result(
-        mode: msaResult.mode,
-        mean: msaResult.mean,
-        standardDeviation: msaResult.standardDeviation,
-        min: msaResult.min,
-        max: msaResult.max,
-        sampleCount: msaResult.sampleCount,
-        repeatability: msaResult.repeatability,
-        bias: msaResult.bias,
-        studyVariation: msaResult.studyVariation,
-        percentStudyVariation: msaResult.percentStudyVariation,
-        discriminationRatio: msaResult.discriminationRatio,
-        numberOfDistinctCategories: msaResult.numberOfDistinctCategories,
-        resolutionPercent: msaResult.resolutionPercent,
-        confidenceIntervalLower: msaResult.confidenceIntervalLower,
-        confidenceIntervalUpper: msaResult.confidenceIntervalUpper,
-        controlLimitLower: msaResult.controlLimitLower,
-        controlLimitUpper: msaResult.controlLimitUpper,
-        cp: msaResult.cp,
-        cpk: msaResult.cpk,
-        toleranceUsedPercent: msaResult.toleranceUsedPercent,
-        suitability: msaResult.suitability,
-        interpretation: msaResult.interpretation,
-        stabilityCheck: msaResult.stabilityCheck,
-        metadata: _metadata,
-      );
+      dynamic analysisResult;
+      String resultDisplay;
+
+      if (_analysisType == AnalysisType.PROCESS_MONITORING) {
+        // Prozessüberwachungs-Analyse (1D, 2D direct, oder 2D distances)
+        print('Starting Process Monitoring analysis...');
+
+        ProcessMonitoringResult result;
+
+        if (parseResult.values_1d.isNotEmpty) {
+          // 1D Mode
+          result = ProcessMonitoringService.analyze1D(
+            values: parseResult.values_1d,
+          );
+        } else if (parseResult.points_2d_direct.isNotEmpty) {
+          // 2D Direct Mode
+          result = ProcessMonitoringService.analyze2DDirect(
+            points: parseResult.points_2d_direct,
+          );
+        } else if (parseResult.points_2d_distances.isNotEmpty) {
+          // 2D Distances Mode
+          result = ProcessMonitoringService.analyze2DDistances(
+            measurements: _createMeasurementsFromPoints(
+              parseResult.points_2d_distances,
+            ),
+          );
+        } else {
+          throw Exception(
+            'Prozessüberwachung benötigt Daten (1D, 2D X,Y oder 2D x1,y1,x2,y2). '
+            'Bitte eine gültige CSV-Datei laden.',
+          );
+        }
+
+        analysisResult = result;
+        resultDisplay = result.toFormattedString();
+        print('✓ Process Monitoring analysis completed');
+      } else {
+        // MSA Typ 1 Analyse (Standard)
+        print('🔧 Starting MSA Type 1 analysis...');
+        final msaResult = MsaType1Service.analyzeWithMode(
+          mode: parseResult.mode,
+          values_1d: parseResult.values_1d,
+          points_2d_direct: parseResult.points_2d_direct,
+          points_2d_distances: parseResult.points_2d_distances,
+          measurements_distances: parseResult.mode ==
+                  AnalysisMode.twoD_distances
+              ? _createMeasurementsFromPoints(parseResult.points_2d_distances)
+              : null,
+          toleranceRange: 10.0,
+          analyzeStability: true,
+        );
+        print('✓ MSA analysis completed');
+
+        // 3. Metadaten an Ergebnis anhängen
+        final msaResultWithMetadata = MsaType1Result(
+          mode: msaResult.mode,
+          mean: msaResult.mean,
+          standardDeviation: msaResult.standardDeviation,
+          min: msaResult.min,
+          max: msaResult.max,
+          sampleCount: msaResult.sampleCount,
+          repeatability: msaResult.repeatability,
+          bias: msaResult.bias,
+          studyVariation: msaResult.studyVariation,
+          percentStudyVariation: msaResult.percentStudyVariation,
+          discriminationRatio: msaResult.discriminationRatio,
+          numberOfDistinctCategories: msaResult.numberOfDistinctCategories,
+          resolutionPercent: msaResult.resolutionPercent,
+          confidenceIntervalLower: msaResult.confidenceIntervalLower,
+          confidenceIntervalUpper: msaResult.confidenceIntervalUpper,
+          controlLimitLower: msaResult.controlLimitLower,
+          controlLimitUpper: msaResult.controlLimitUpper,
+          cp: msaResult.cp,
+          cpk: msaResult.cpk,
+          toleranceUsedPercent: msaResult.toleranceUsedPercent,
+          suitability: msaResult.suitability,
+          interpretation: msaResult.interpretation,
+          stabilityCheck: msaResult.stabilityCheck,
+          metadata: _metadata,
+        );
+
+        analysisResult = msaResultWithMetadata;
+        resultDisplay = msaResultWithMetadata.toFormattedString();
+
+        // Debug: JSON Export
+        print('\n📋 JSON Export:');
+        print(msaResult.toJson());
+      }
 
       // 4. UI aktualisieren
       if (mounted) {
         setState(() {
-          _analysisResult = msaResultWithMetadata.toFormattedString();
-          _msaResult = msaResultWithMetadata;
+          _analysisResult = resultDisplay;
+          _msaResult = analysisResult;
           _currentMode = parseResult.mode;
-          _measurements = _createMeasurementsFromResult(parseResult, msaResult);
+          if (analysisResult is MsaType1Result) {
+            _measurements = _createMeasurementsFromResult(
+              parseResult,
+              analysisResult as MsaType1Result,
+            );
+          } else {
+            _measurements = null; // Process Monitoring nutzt keine Measurements
+          }
         });
 
         // Erfolgs-Meldung
+        final sampleCount = analysisResult is MsaType1Result
+            ? (analysisResult as MsaType1Result).sampleCount
+            : (analysisResult as ProcessMonitoringResult).sampleCount;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✓ ${msaResult.sampleCount} Messungen analysiert (${msaResult.mode.shortDescription})',
+              '✓ $sampleCount Messungen analysiert (${_analysisType.description})',
             ),
             backgroundColor: Colors.green,
           ),
         );
       }
-
-      // Debug: JSON Export
-      print('\n📋 JSON Export:');
-      print(msaResult.toJson());
     } catch (e, stackTrace) {
       print('❌ Error in _analyzeData: $e');
       print('Stack trace: $stackTrace');
@@ -697,6 +775,42 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Analyse-Modus:',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButton<AnalysisType>(
+                              value: _analysisType,
+                              isExpanded: true,
+                              items: AnalysisType.values
+                                  .map((mode) => DropdownMenuItem(
+                                        value: mode,
+                                        child: Text(mode.description),
+                                      ))
+                                  .toList(),
+                              onChanged: (AnalysisType? newType) {
+                                if (newType != null) {
+                                  setState(() {
+                                    _analysisType = newType;
+                                    _analysisResult = null;
+                                    _msaResult = null;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     if (!_isDemoMode && _analysisResult == null)
                       Padding(
@@ -1262,7 +1376,7 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
   }
 
   Future<void> _exportToPdf() async {
-    if (_msaResult == null || _measurements == null) {
+    if (_msaResult == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Keine Analysedaten zum Exportieren'),
@@ -1275,10 +1389,25 @@ class _MsaAnalysisScreenState extends State<MsaAnalysisScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final pdfPath = await PdfExportService.generatePdfReport(
-        result: _msaResult,
-        measurements: _measurements!,
-      );
+      String pdfPath;
+
+      if (_msaResult is MsaType1Result) {
+        // Export MSA Type 1 report
+        if (_measurements == null) {
+          throw Exception('Messungen erforderlich für MSA Type 1 PDF');
+        }
+        pdfPath = await PdfExportService.generatePdfReport(
+          result: _msaResult as MsaType1Result,
+          measurements: _measurements!,
+        );
+      } else if (_msaResult is ProcessMonitoringResult) {
+        // Export Process Monitoring report
+        pdfPath = await PdfExportService.generateProcessMonitoringPdfReport(
+          result: _msaResult as ProcessMonitoringResult,
+        );
+      } else {
+        throw Exception('Unbekannter Analyseergebnistyp');
+      }
 
       // Datei öffnen (wenn möglich)
       if (Platform.isWindows) {
